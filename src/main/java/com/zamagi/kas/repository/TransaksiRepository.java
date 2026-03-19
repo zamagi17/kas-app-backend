@@ -8,5 +8,5 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface TransaksiRepository extends JpaRepository<Transaksi, Long> {
     // Spring Data JPA otomatis membuatkan fungsi save(), findAll(), deleteById(), dll!
-    List<Transaksi> findByUserUsername(String username);
+    List<Transaksi> findByUserUsernameOrderByTanggalDescIdDesc(String username);
 }

@@ -42,7 +42,7 @@ public class TransaksiController {
     @GetMapping
     public List<Transaksi> getAllTransaksi() {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        return transaksiRepository.findByUserUsername(username);
+        return transaksiRepository.findByUserUsernameOrderByTanggalDescIdDesc(username);
     }
 
     // 3. Update Data (UPDATE)

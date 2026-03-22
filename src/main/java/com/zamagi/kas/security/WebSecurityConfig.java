@@ -39,6 +39,7 @@ public class WebSecurityConfig {
                 .authorizeHttpRequests(auth
                         -> auth.requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/error").permitAll()
+                        .requestMatchers("/api/health").permitAll() // <-- TAMBAHKAN BARIS INI
                         .anyRequest().authenticated()
                 );
 

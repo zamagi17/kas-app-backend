@@ -6,14 +6,16 @@ import com.zamagi.kas.repository.TransaksiRepository;
 import com.zamagi.kas.repository.UserRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 import org.springframework.security.core.context.SecurityContextHolder;
+
+import java.time.LocalDate;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/transaksi")
-@CrossOrigin(origins = "*") // Penting: Mengizinkan web Netlify kamu untuk mengakses API ini
+@CrossOrigin(origins = "*")
 public class TransaksiController {
 
     @Autowired
@@ -22,21 +24,62 @@ public class TransaksiController {
     @Autowired
     private UserRepository userRepository;
 
+    // Daftar jenis yang diizinkan
+    private static final List<String> JENIS_VALID = List.of(
+        "Pemasukan", "Pengeluaran",
+        "Rencana Pemasukan", "Rencana Pengeluaran"
+    );
+
+    // Helper validasi, return pesan error atau null kalau valid
+    private String validasiTransaksi(Transaksi t) {
+        if (t.getNominal() == null || t.getNominal() <= 0)
+            return "Nominal harus lebih dari 0";
+
+        if (t.getNominal() > 999_999_999_999L)
+            return "Nominal maksimal Rp 999.999.999.999";
+
+        if (t.getJenis() == null || !JENIS_VALID.contains(t.getJenis()))
+            return "Jenis transaksi tidak valid";
+
+        if (t.getTanggal() == null)
+            return "Tanggal wajib diisi";
+
+        if (t.getTanggal().isBefore(LocalDate.of(2000, 1, 1)))
+            return "Tanggal terlalu jauh ke belakang (minimal tahun 2000)";
+
+        if (t.getTanggal().isAfter(LocalDate.now().plusYears(1)))
+            return "Tanggal terlalu jauh ke depan (maksimal 1 tahun)";
+
+        if (t.getKategori() == null || t.getKategori().isBlank())
+            return "Kategori wajib diisi";
+
+        if (t.getKategori().length() > 100)
+            return "Kategori maksimal 100 karakter";
+
+        if (t.getSumberDana() == null || t.getSumberDana().isBlank())
+            return "Sumber dana wajib diisi";
+
+        if (t.getSumberDana().length() > 100)
+            return "Sumber dana maksimal 100 karakter";
+
+        if (t.getKeterangan() != null && t.getKeterangan().length() > 500)
+            return "Keterangan maksimal 500 karakter";
+
+        return null; // valid
+    }
+
     @PostMapping
     @Transactional
-    public Transaksi tambahTransaksi(@RequestBody Transaksi transaksi) {
-        // 1. Ambil username dari user yang sedang login via Token JWT
-        String username = org.springframework.security.core.context.SecurityContextHolder
-                .getContext().getAuthentication().getName();
+    public ResponseEntity<?> tambahTransaksi(@RequestBody Transaksi transaksi) {
+        String error = validasiTransaksi(transaksi);
+        if (error != null) return ResponseEntity.badRequest().body(error);
 
-        // 2. Cari data User lengkap dari database
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User tidak ditemukan"));
-
-        // 3. Pasangkan User ke Transaksi sebelum di-save
         transaksi.setUser(user);
 
-        return transaksiRepository.save(transaksi);
+        return ResponseEntity.ok(transaksiRepository.save(transaksi));
     }
 
     @GetMapping
@@ -45,11 +88,14 @@ public class TransaksiController {
         return transaksiRepository.findByUserUsernameOrderByTanggalDescIdDesc(username);
     }
 
-    // 3. Update Data (UPDATE)
     @PutMapping("/{id}")
     @Transactional
-    public Transaksi updateTransaksi(@PathVariable Long id, @RequestBody Transaksi detailTransaksi) {
-        Transaksi transaksi = transaksiRepository.findById(id).orElseThrow(() -> new RuntimeException("Data tidak ditemukan"));
+    public ResponseEntity<?> updateTransaksi(@PathVariable Long id, @RequestBody Transaksi detailTransaksi) {
+        String error = validasiTransaksi(detailTransaksi);
+        if (error != null) return ResponseEntity.badRequest().body(error);
+
+        Transaksi transaksi = transaksiRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Data tidak ditemukan"));
 
         transaksi.setTanggal(detailTransaksi.getTanggal());
         transaksi.setKategori(detailTransaksi.getKategori());
@@ -58,14 +104,16 @@ public class TransaksiController {
         transaksi.setNominal(detailTransaksi.getNominal());
         transaksi.setKeterangan(detailTransaksi.getKeterangan());
 
-        return transaksiRepository.save(transaksi);
+        return ResponseEntity.ok(transaksiRepository.save(transaksi));
     }
 
-    // 4. Hapus Data (DELETE)
     @DeleteMapping("/{id}")
     @Transactional
-    public String hapusTransaksi(@PathVariable Long id) {
+    public ResponseEntity<?> hapusTransaksi(@PathVariable Long id) {
+        if (!transaksiRepository.existsById(id))
+            return ResponseEntity.badRequest().body("Data tidak ditemukan");
+
         transaksiRepository.deleteById(id);
-        return "Transaksi berhasil dihapus!";
+        return ResponseEntity.ok("Transaksi berhasil dihapus!");
     }
 }

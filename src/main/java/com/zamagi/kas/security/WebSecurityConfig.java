@@ -2,6 +2,7 @@ package com.zamagi.kas.security;
 
 import java.util.Arrays;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -23,6 +24,9 @@ public class WebSecurityConfig {
 
     @Autowired
     private AuthTokenFilter authTokenFilter; // Tambahkan ini
+
+    @Autowired
+    private RateLimitFilter rateLimitFilter;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -58,5 +62,14 @@ public class WebSecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
+    }
+
+    @Bean
+    public FilterRegistrationBean<RateLimitFilter> rateLimitFilterRegistration() {
+        FilterRegistrationBean<RateLimitFilter> registration = new FilterRegistrationBean<>();
+        registration.setFilter(rateLimitFilter);
+        registration.addUrlPatterns("/api/auth/*");
+        registration.setOrder(1); // Jalan paling awal sebelum filter lain
+        return registration;
     }
 }

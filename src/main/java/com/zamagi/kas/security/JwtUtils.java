@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import java.security.Key;
 import java.util.Date;
 import org.springframework.beans.factory.annotation.Value;
+import java.util.Base64;
 
 @Component
 public class JwtUtils {
@@ -13,42 +14,126 @@ public class JwtUtils {
     @Value("${app.jwt.secret}")
     private String jwtSecret;
 
-    @Value("${app.jwt.expiration-ms}")
+    // Access token: 15 menit (900_000 ms)
+    // Diambil dari config, fallback 900000
+    @Value("${app.jwt.expiration-ms:900000}")
     private int jwtExpirationMs;
 
+    // Refresh token: 7 hari (604_800_000 ms)
+    @Value("${app.jwt.refresh-expiration-ms:604800000}")
+    private long refreshExpirationMs;
+
+    // Gunakan Base64-decoded key agar panjang key selalu aman (>= 256 bit)
     private Key getSigningKey() {
-        return Keys.hmacShaKeyFor(jwtSecret.getBytes());
+        byte[] keyBytes;
+        try {
+            keyBytes = Base64.getDecoder().decode(jwtSecret);
+        } catch (IllegalArgumentException e) {
+            // Fallback jika secret bukan Base64 (backward-compatible)
+            keyBytes = jwtSecret.getBytes();
+        }
+        // Pastikan panjang key >= 32 byte (256 bit) untuk HS256
+        if (keyBytes.length < 32) {
+            byte[] padded = new byte[32];
+            System.arraycopy(keyBytes, 0, padded, 0, keyBytes.length);
+            keyBytes = padded;
+        }
+        return Keys.hmacShaKeyFor(keyBytes);
     }
 
-    // Fungsi mencetak token saat login berhasil
-    public String generateJwtToken(String username) {
+    // ── ACCESS TOKEN (15 menit) ──────────────────────────────────────────────
+
+    public String generateAccessToken(String username) {
         return Jwts.builder()
                 .setSubject(username)
+                .claim("type", "access")
                 .setIssuedAt(new Date())
-                .setExpiration(new Date((new Date()).getTime() + jwtExpirationMs))
+                .setExpiration(new Date(System.currentTimeMillis() + jwtExpirationMs))
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256)
                 .compact();
     }
 
-    // Fungsi mengambil username dari dalam token
-    public String getUserNameFromJwtToken(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(getSigningKey()).build()
-                .parseClaimsJws(token).getBody().getSubject();
+    // ── REFRESH TOKEN (7 hari) ───────────────────────────────────────────────
+
+    public String generateRefreshToken(String username) {
+        return Jwts.builder()
+                .setSubject(username)
+                .claim("type", "refresh")
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + refreshExpirationMs))
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+                .compact();
     }
 
-    // Fungsi validasi apakah token asli dan masih berlaku
-    public boolean validateJwtToken(String authToken) {
+    // ── PARSE ────────────────────────────────────────────────────────────────
+
+    public String getUserNameFromJwtToken(String token) {
+        return parseClaims(token).getSubject();
+    }
+
+    public String getTokenType(String token) {
+        return (String) parseClaims(token).get("type");
+    }
+
+    public Date getExpirationFromToken(String token) {
+        return parseClaims(token).getExpiration();
+    }
+
+    private Claims parseClaims(String token) {
+        return Jwts.parserBuilder()
+                .setSigningKey(getSigningKey())
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+    }
+
+    // ── VALIDASI ─────────────────────────────────────────────────────────────
+
+    public boolean validateJwtToken(String token) {
         try {
             Jwts.parserBuilder()
                     .setSigningKey(getSigningKey())
-                    .setAllowedClockSkewSeconds(60) // Tambahkan toleransi 60 detik
+                    .setAllowedClockSkewSeconds(60)
                     .build()
-                    .parseClaimsJws(authToken);
+                    .parseClaimsJws(token);
             return true;
+        } catch (ExpiredJwtException e) {
+            System.out.println("JWT expired: " + e.getMessage());
+        } catch (UnsupportedJwtException e) {
+            System.out.println("JWT unsupported: " + e.getMessage());
+        } catch (MalformedJwtException e) {
+            System.out.println("JWT malformed: " + e.getMessage());
         } catch (Exception e) {
-            System.out.println("JWT Validation Error: " + e.getMessage());
+            System.out.println("JWT error: " + e.getMessage());
         }
         return false;
+    }
+
+    // Validasi dan pastikan ini adalah access token (bukan refresh)
+    public boolean validateAccessToken(String token) {
+        if (!validateJwtToken(token)) return false;
+        try {
+            String type = getTokenType(token);
+            return "access".equals(type);
+        } catch (Exception e) {
+            // Token lama (sebelum ada claim "type") — tetap diterima untuk backward-compat
+            return true;
+        }
+    }
+
+    // Validasi khusus refresh token
+    public boolean validateRefreshToken(String token) {
+        if (!validateJwtToken(token)) return false;
+        try {
+            return "refresh".equals(getTokenType(token));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // ── BACKWARD COMPAT: generateJwtToken tetap ada ──────────────────────────
+    // Supaya AuthController yang sudah ada tidak perlu diubah besar-besaran
+    public String generateJwtToken(String username) {
+        return generateAccessToken(username);
     }
 }

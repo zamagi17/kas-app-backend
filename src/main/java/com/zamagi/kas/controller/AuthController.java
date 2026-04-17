@@ -25,31 +25,30 @@ public class AuthController {
     @Autowired
     JwtUtils jwtUtils;
 
+    // ── VALIDASI ─────────────────────────────────────────────────────────────
+
     private String validasiUser(String username, String password) {
         if (username == null || username.isBlank())
             return "Username tidak boleh kosong";
-
         if (username.length() < 3)
             return "Username minimal 3 karakter";
-
         if (username.length() > 50)
             return "Username maksimal 50 karakter";
-
-        // Hanya boleh huruf, angka, underscore, dan titik
         if (!username.matches("^[a-zA-Z0-9_.]+$"))
             return "Username hanya boleh huruf, angka, titik, dan underscore";
-
         if (password == null || password.isBlank())
             return "Password tidak boleh kosong";
-
-        if (password.length() < 6)
-            return "Password minimal 6 karakter";
-
+        if (password.length() < 8)
+            return "Password minimal 8 karakter";
         if (password.length() > 100)
             return "Password maksimal 100 karakter";
-
-        return null; // valid
+        // Validasi kekuatan password: harus ada huruf dan angka
+        if (!password.matches(".*[a-zA-Z].*") || !password.matches(".*[0-9].*"))
+            return "Password harus mengandung huruf dan angka";
+        return null;
     }
+
+    // ── REGISTER ─────────────────────────────────────────────────────────────
 
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@RequestBody User user) {
@@ -64,12 +63,13 @@ public class AuthController {
         return ResponseEntity.ok("User berhasil didaftarkan!");
     }
 
+    // ── LOGIN ─────────────────────────────────────────────────────────────────
+    // Sekarang return BOTH access token (15 menit) + refresh token (7 hari)
+
     @PostMapping("/login")
     public ResponseEntity<?> authenticateUser(@RequestBody User user) {
-        // Validasi input login juga
         if (user.getUsername() == null || user.getUsername().isBlank())
             return ResponseEntity.badRequest().body(Map.of("error", "Username wajib diisi"));
-
         if (user.getPassword() == null || user.getPassword().isBlank())
             return ResponseEntity.badRequest().body(Map.of("error", "Password wajib diisi"));
 
@@ -77,15 +77,55 @@ public class AuthController {
         if (userOptional.isPresent()) {
             User u = userOptional.get();
             if (encoder.matches(user.getPassword(), u.getPassword())) {
-                String token = jwtUtils.generateJwtToken(u.getUsername());
+                String accessToken  = jwtUtils.generateAccessToken(u.getUsername());
+                String refreshToken = jwtUtils.generateRefreshToken(u.getUsername());
                 return ResponseEntity.ok(Map.of(
-                    "token", token,
-                    "username", u.getUsername()
+                        "token",        accessToken,   // nama "token" tetap sama agar frontend tidak perlu banyak ubah
+                        "refreshToken", refreshToken,
+                        "username",     u.getUsername()
                 ));
             }
         }
 
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(Map.of("error", "Username atau Password salah!"));
+    }
+
+    // ── REFRESH TOKEN ─────────────────────────────────────────────────────────
+    // POST /api/auth/refresh
+    // Body: { "refreshToken": "eyJ..." }
+    // Return: { "token": "eyJ...", "refreshToken": "eyJ..." }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refreshToken(@RequestBody Map<String, String> body) {
+        String refreshToken = body.get("refreshToken");
+
+        if (refreshToken == null || refreshToken.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "refreshToken wajib diisi"));
+        }
+
+        // Validasi: harus valid DAN bertipe "refresh"
+        if (!jwtUtils.validateRefreshToken(refreshToken)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Refresh token tidak valid atau sudah expired"));
+        }
+
+        String username = jwtUtils.getUserNameFromJwtToken(refreshToken);
+
+        // Pastikan user masih ada di database
+        if (!userRepository.existsByUsername(username)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "User tidak ditemukan"));
+        }
+
+        // Issue token baru
+        String newAccessToken  = jwtUtils.generateAccessToken(username);
+        String newRefreshToken = jwtUtils.generateRefreshToken(username);
+
+        return ResponseEntity.ok(Map.of(
+                "token",        newAccessToken,
+                "refreshToken", newRefreshToken,
+                "username",     username
+        ));
     }
 }

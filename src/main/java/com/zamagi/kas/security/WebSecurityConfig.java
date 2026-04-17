@@ -1,7 +1,9 @@
 package com.zamagi.kas.security;
 
 import java.util.Arrays;
+import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -23,31 +25,39 @@ public class WebSecurityConfig {
     private AuthEntryPointJwt unauthorizedHandler;
 
     @Autowired
-    private AuthTokenFilter authTokenFilter; // Tambahkan ini
+    private AuthTokenFilter authTokenFilter;
 
     @Autowired
     private RateLimitFilter rateLimitFilter;
 
+    // Baca allowed origins dari application.properties
+    // Contoh: app.cors.allowed-origins=https://zamagi.app,https://www.zamagi.app
+    // Fallback ke "*" untuk development
+    @Value("${app.cors.allowed-origins:*}")
+    private String allowedOriginsRaw;
+
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(); // Enkripsi password standar industri
+        // BCrypt strength 12 lebih aman dari default 10, masih performa wajar
+        return new BCryptPasswordEncoder(12);
     }
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
-                .cors(Customizer.withDefaults()) // Aktifkan CORS secara resmi
-                .exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedHandler))
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth
-                        -> auth.requestMatchers("/api/auth/**").permitAll()
+                .cors(Customizer.withDefaults())
+                .exceptionHandling(exception ->
+                        exception.authenticationEntryPoint(unauthorizedHandler))
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/auth/**").permitAll()  // login, register, refresh
+                        .requestMatchers("/api/health").permitAll()
                         .requestMatchers("/error").permitAll()
-                        .requestMatchers("/api/health").permitAll() // <-- TAMBAHKAN BARIS INI
                         .anyRequest().authenticated()
                 );
 
-        // BARIS KRUSIAL: Harus diletakkan di sini
         http.addFilterBefore(authTokenFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
@@ -56,9 +66,25 @@ public class WebSecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("*")); // Izinkan semua asal
+
+        // Parse allowed origins dari config (bisa multiple, dipisah koma)
+        if ("*".equals(allowedOriginsRaw.trim())) {
+            // Development mode: izinkan semua (tetap aman karena stateless JWT)
+            configuration.setAllowedOriginPatterns(List.of("*"));
+        } else {
+            // Production: whitelist domain spesifik
+            List<String> origins = Arrays.stream(allowedOriginsRaw.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .toList();
+            configuration.setAllowedOrigins(origins);
+        }
+
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type"));
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With"));
+        configuration.setExposedHeaders(List.of("Authorization")); // expose header ke frontend
+        configuration.setMaxAge(3600L); // cache preflight 1 jam
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
@@ -69,7 +95,7 @@ public class WebSecurityConfig {
         FilterRegistrationBean<RateLimitFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(rateLimitFilter);
         registration.addUrlPatterns("/api/auth/*");
-        registration.setOrder(1); // Jalan paling awal sebelum filter lain
+        registration.setOrder(1);
         return registration;
     }
 }

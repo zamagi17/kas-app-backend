@@ -1,7 +1,9 @@
 package com.zamagi.kas.controller;
 
 import com.zamagi.kas.model.Budget;
+import com.zamagi.kas.model.User;
 import com.zamagi.kas.repository.BudgetRepository;
+import com.zamagi.kas.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -9,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 @RestController
 @RequestMapping("/api/budget")
@@ -16,6 +19,15 @@ public class BudgetController {
 
     @Autowired
     private BudgetRepository budgetRepository;
+    
+    @Autowired
+    private UserRepository userRepository;
+
+    private User getCurrentUser() {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User tidak ditemukan"));
+    }
 
     // GET /api/budget?bulan=2025-07
     @GetMapping
@@ -23,16 +35,15 @@ public class BudgetController {
             Authentication auth,
             @RequestParam(defaultValue = "") String bulan) {
 
-        String userId = auth.getName();
+        String username = auth.getName();
         List<Budget> list;
 
         if (bulan.isBlank()) {
-            // Kembalikan semua budget user jika bulan tidak diisi
             list = budgetRepository.findAll().stream()
-                    .filter(b -> b.getUserId().equals(userId))
+                    .filter(b -> b.getUser() != null && b.getUser().getUsername().equals(username))
                     .toList();
         } else {
-            list = budgetRepository.findByUserIdAndBulan(userId, bulan);
+            list = budgetRepository.findByUserUsernameAndBulan(username, bulan);
         }
         return ResponseEntity.ok(list);
     }
@@ -40,16 +51,15 @@ public class BudgetController {
     // POST /api/budget
     @PostMapping
     public ResponseEntity<?> create(@RequestBody Budget budget, Authentication auth) {
-        String userId = auth.getName();
+        User user = getCurrentUser();
 
-        // Cek duplikat kategori di bulan yang sama
-        if (budgetRepository.findByUserIdAndKategoriAndBulan(
-                userId, budget.getKategori(), budget.getBulan()).isPresent()) {
+        if (budgetRepository.findByUserUsernameAndKategoriAndBulan(
+                user.getUsername(), budget.getKategori(), budget.getBulan()).isPresent()) {
             return ResponseEntity.badRequest()
                     .body("Budget untuk kategori ini di bulan tersebut sudah ada.");
         }
 
-        budget.setUserId(userId);
+        budget.setUser(user);
         return ResponseEntity.ok(budgetRepository.save(budget));
     }
 
@@ -61,7 +71,7 @@ public class BudgetController {
             Authentication auth) {
 
         return budgetRepository.findById(id)
-                .filter(b -> b.getUserId().equals(auth.getName()))
+                .filter(b -> b.getUser() != null && b.getUser().getUsername().equals(auth.getName()))
                 .map(b -> {
                     b.setLimitBulan(updated.getLimitBulan());
                     b.setCatatan(updated.getCatatan());
@@ -74,7 +84,7 @@ public class BudgetController {
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable Long id, Authentication auth) {
         return budgetRepository.findById(id)
-                .filter(b -> b.getUserId().equals(auth.getName()))
+                .filter(b -> b.getUser() != null && b.getUser().getUsername().equals(auth.getName()))
                 .map(b -> {
                     budgetRepository.delete(b);
                     return ResponseEntity.ok(Map.of("message", "Budget dihapus"));

@@ -14,10 +14,17 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 import org.springframework.scheduling.annotation.Async;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Component
 public class ReportScheduler {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ReportScheduler.class);
+
+    private static final String EMAIL_PATTERN = "^[A-Za-z0-9+_.-]+@(.+)$";
 
     @Autowired
     private UserRepository userRepository;
@@ -33,10 +40,31 @@ public class ReportScheduler {
     @Scheduled(cron = "0 0 7 1 * *")
     public void sendMonthlyReports() {
         List<User> users = userRepository.findUsersForMonthlyReport();
+        LOGGER.info("Memulai pengiriman laporan bulanan untuk {} user.", users.size());
+
+        int countSukses = 0;
+        int countGagal = 0;
 
         for (User user : users) {
+            // 1. Validasi keberadaan email
+            if (user.getEmail() == null || user.getEmail().isBlank()) {
+                LOGGER.warn("User {} dilewati: Email kosong.", user.getUsername());
+                countGagal++;
+                continue;
+            }
+
+            // 2. Validasi format email dengan Regex
+            if (!Pattern.matches(EMAIL_PATTERN, user.getEmail())) {
+                LOGGER.warn("User {} dilewati: Format email tidak valid ({}).", user.getUsername(), user.getEmail());
+                countGagal++;
+                continue;
+            }
+
             sendEmailAsync(user);
+            countSukses++;
         }
+
+        LOGGER.info("Pengiriman selesai. {} antrean diproses, {} dilewati.", countSukses, countGagal);
     }
 
     private void sendEmail(User user) {
@@ -70,9 +98,9 @@ public class ReportScheduler {
             );
 
             mailSender.send(mimeMessage);
-
+            LOGGER.debug("Email sukses dikirim ke {}", user.getEmail());
         } catch (Exception e) {
-            e.printStackTrace();
+            LOGGER.error("Gagal mengirim email ke user {}: {}", user.getUsername(), e.getMessage());
         }
     }
 

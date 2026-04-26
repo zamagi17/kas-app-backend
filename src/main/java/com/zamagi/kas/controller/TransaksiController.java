@@ -1,5 +1,6 @@
 package com.zamagi.kas.controller;
 
+import com.zamagi.kas.dto.TransferRequest;
 import com.zamagi.kas.model.Transaksi;
 import com.zamagi.kas.model.User;
 import com.zamagi.kas.model.UtangPiutang;
@@ -312,5 +313,50 @@ public class TransaksiController {
         response.put("historyData", historyBulanIni);
 
         return ResponseEntity.ok(response);
+    }
+    
+    @PostMapping("/transfer")
+    @Transactional
+    public ResponseEntity<?> transferAset(@RequestBody TransferRequest req) {
+        
+        // 1. Validasi Dasar
+        if (req.getNominal() == null || req.getNominal() <= 0) {
+            return ResponseEntity.badRequest().body("Nominal transfer harus lebih dari 0");
+        }
+        if (req.getSumberDana() == null || req.getSumberDanaTujuan() == null || 
+            req.getSumberDana().equals(req.getSumberDanaTujuan())) {
+            return ResponseEntity.badRequest().body("Dompet asal dan tujuan tidak valid atau sama");
+        }
+
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User tidak ditemukan"));
+
+        String baseKeterangan = (req.getKeterangan() != null && !req.getKeterangan().isBlank()) 
+                                ? req.getKeterangan() : "Transfer Aset";
+
+        // 2. Buat Transaksi Mutasi Keluar (Dari Dompet Asal)
+        Transaksi tKeluar = new Transaksi();
+        tKeluar.setUser(user);
+        tKeluar.setTanggal(req.getTanggal() != null ? req.getTanggal() : LocalDate.now());
+        tKeluar.setJenis("Pengeluaran");
+        tKeluar.setKategori("Transfer Aset (Auto)");
+        tKeluar.setSumberDana(req.getSumberDana());
+        tKeluar.setNominal(req.getNominal());
+        tKeluar.setKeterangan(baseKeterangan + " (Mutasi Keluar)");
+        transaksiRepository.save(tKeluar);
+
+        // 3. Buat Transaksi Mutasi Masuk (Ke Dompet Tujuan)
+        Transaksi tMasuk = new Transaksi();
+        tMasuk.setUser(user);
+        tMasuk.setTanggal(tKeluar.getTanggal());
+        tMasuk.setJenis("Pemasukan");
+        tMasuk.setKategori("Transfer Aset (Auto)");
+        tMasuk.setSumberDana(req.getSumberDanaTujuan());
+        tMasuk.setNominal(req.getNominal());
+        tMasuk.setKeterangan(baseKeterangan + " (Mutasi Masuk)");
+        transaksiRepository.save(tMasuk);
+
+        return ResponseEntity.ok("Transfer berhasil dicatat");
     }
 }

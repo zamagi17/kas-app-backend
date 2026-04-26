@@ -231,31 +231,34 @@ public class PdfReportService {
             document.add(userInfoTable);
 
             // ==========================================
-            // 1. SUMMARY CARDS (RINGKASAN ARUS KAS)
+            // 1. SUMMARY CARDS (RINGKASAN PEMASUKAN & PENGELUARAN)
             // ==========================================
-            document.add(new Paragraph("RINGKASAN ARUS KAS")
+            document.add(new Paragraph("RINGKASAN PEMASUKAN & PENGELUARAN")
                     .setFontColor(accentColor).setBold().setFontSize(12).setMarginBottom(2));
 
-            // Tambahan copywriting profesional untuk mengisi kekosongan
-            document.add(new Paragraph("Ikhtisar pergerakan likuiditas selama periode berjalan. Evaluasi rasio pemasukan dan pengeluaran ini berguna untuk mengukur efisiensi arus kas Anda.")
+            document.add(new Paragraph("Ikhtisar pergerakan uang selama periode berjalan. Evaluasi rasio pemasukan dan pengeluaran ini berguna untuk mengukur efisiensi keuangan Anda.")
                     .setFontColor(textMuted).setFontSize(9).setItalic().setMarginBottom(10));
 
             Table tableRingkasan = new Table(UnitValue.createPercentArray(4)).useAllAvailableWidth();
             tableRingkasan.addCell(createModernSummaryCell("Saldo Awal", formatRp(sAwal), textMuted, accentColor));
-            tableRingkasan.addCell(createModernSummaryCell("Total Masuk", formatRp(tMasuk), textMuted, new DeviceRgb(5, 150, 105)));
-            tableRingkasan.addCell(createModernSummaryCell("Total Keluar", formatRp(tKeluar), textMuted, new DeviceRgb(220, 38, 38)));
-            tableRingkasan.addCell(createModernSummaryCell("Sisa Kas", formatRp(sisaKas), textMuted, primaryColor));
+
+            tableRingkasan.addCell(createModernSummaryCell("Total Pemasukan", formatRp(tMasuk), textMuted, new DeviceRgb(5, 150, 105)));
+
+            tableRingkasan.addCell(createModernSummaryCell("Total Pengeluaran", formatRp(tKeluar), textMuted, new DeviceRgb(220, 38, 38)));
+
+            tableRingkasan.addCell(createModernSummaryCell("Sisa Saldo", formatRp(sisaKas), textMuted, primaryColor));
+
             document.add(tableRingkasan);
             document.add(new Paragraph("\n"));
 
             // ==========================================
             // 2. POSISI ASET & NET WORTH
             // ==========================================
-            document.add(new Paragraph("POSISI ASET & PORTOFOLIO")
+            document.add(new Paragraph("SALDO PER DOMPET / REKENING")
                     .setFontColor(accentColor).setBold().setFontSize(12).setMarginBottom(2));
 
-            // Tambahan copywriting profesional
-            document.add(new Paragraph("Distribusi kekayaan bersih (net worth) Anda saat ini yang tersebar di berbagai instrumen penyimpanan dan investasi.")
+            // Menghapus istilah "net worth" dan "instrumen investasi" yang terlalu kaku
+            document.add(new Paragraph("Distribusi saldo uang Anda saat ini yang tersebar di berbagai dompet dan rekening bank.")
                     .setFontColor(textMuted).setFontSize(9).setItalic().setMarginBottom(10));
 
             Table tableAset = new Table(UnitValue.createPercentArray(new float[]{60, 40})).useAllAvailableWidth();
@@ -276,7 +279,7 @@ public class PdfReportService {
 
             // Perbaikan visual baris Total Aset agar lebih modern (diberi background tipis)
             Cell cellTotalLabel = new Cell()
-                    .add(new Paragraph("Total Kekayaan Bersih (Net Worth)").setFontColor(primaryColor).setBold().setFontSize(11))
+                    .add(new Paragraph("Total Saldo Dompet").setFontColor(primaryColor).setBold().setFontSize(11))
                     .setBorder(Border.NO_BORDER)
                     .setBackgroundColor(lightGray)
                     .setPadding(8)
@@ -297,7 +300,7 @@ public class PdfReportService {
             // Transactions Table
             document.add(new Paragraph("RIWAYAT TRANSAKSI").setFontColor(accentColor).setBold().setFontSize(11).setMarginBottom(5));
             Table tableTrans = new Table(UnitValue.createPercentArray(new float[]{12, 18, 30, 20, 20})).useAllAvailableWidth();
-            String[] headers = {"Tanggal", "Kategori", "Keterangan", "Sumber Dana", "Nominal"};
+            String[] headers = {"Tanggal", "Kategori", "Keterangan", "Dompet / Rekening", "Nominal"};
             for (String header : headers) {
                 tableTrans.addHeaderCell(new Cell().add(new Paragraph(header).setFontColor(ColorConstants.WHITE).setBold().setFontSize(9)).setBackgroundColor(primaryColor).setBorder(Border.NO_BORDER).setPadding(6));
             }

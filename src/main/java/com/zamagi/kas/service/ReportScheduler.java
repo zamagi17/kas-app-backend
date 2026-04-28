@@ -91,7 +91,7 @@ public class ReportScheduler {
 
             String htmlContent = buildHtmlEmail(user, namaBulan, totalMasuk, totalKeluar);
             helper.setText(htmlContent, true);
-            helper.setFrom("zonakas17@gmail.com");
+            helper.setFrom("team.zonakas@gmail.com");
             helper.addAttachment(
                     "Laporan_" + user.getUsername() + "_" + bulan + ".pdf",
                     () -> new java.io.ByteArrayInputStream(pdfBytes)

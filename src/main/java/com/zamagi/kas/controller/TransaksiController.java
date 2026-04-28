@@ -224,7 +224,7 @@ public class TransaksiController {
                 .body(pdfBytes);
     }
 
-    @GetMapping("/ringkasan")
+@GetMapping("/ringkasan")
     public ResponseEntity<?> getRingkasanLaporan(@RequestParam String bulan) {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
 
@@ -271,22 +271,28 @@ public class TransaksiController {
             boolean isTransferOrMutasi = "Transfer Aset (Auto)".equals(kategori)
                     && (keterangan.contains("Mutasi Masuk") || keterangan.contains("Mutasi Keluar"));
 
+            // Mengelompokkan jenis transaksi berdasarkan sifat Arus Kas
+            boolean isCashIn = "Pemasukan".equals(jenis) || "Utang Masuk".equals(jenis) || "Terima Piutang".equals(jenis);
+            boolean isCashOut = "Pengeluaran".equals(jenis) || "Piutang Keluar".equals(jenis) || "Bayar Utang".equals(jenis);
+
             // Hitung Transaksi Hari Ini (Akan otomatis terhitung jika user melihat bulan berjalan)
             if (rowDate.isEqual(today) && !isTransferOrMutasi) {
-                if ("Pemasukan".equals(jenis)) {
+                if (isCashIn) {
                     hMasuk += nom;
-                } else if ("Pengeluaran".equals(jenis)) {
+                } else if (isCashOut) {
                     hKeluar += nom;
                 }
             }
 
-            if ("Pemasukan".equals(jenis) && !isTransferOrMutasi) {
+            // Hitung Kalkulasi Bulan Ini & Chart Pengeluaran
+            if (isCashIn && !isTransferOrMutasi) {
                 tMasuk += nom;
-            } else if ("Pengeluaran".equals(jenis)) {
-                if (!isTransferOrMutasi) {
-                    tKeluar += nom;
-                    chartPengeluaran.put(kategori, chartPengeluaran.getOrDefault(kategori, 0L) + nom);
-                }
+            } else if (isCashOut && !isTransferOrMutasi) {
+                tKeluar += nom;
+                
+                // Memasukkan seluruh arus kas keluar ke chart (pastikan kategori diisi dengan benar, misal "Cicilan Utang")
+                chartPengeluaran.put(kategori, chartPengeluaran.getOrDefault(kategori, 0L) + nom);
+                
             } else if ("Rencana Pemasukan".equals(jenis)) {
                 rMasuk += nom;
             } else if ("Rencana Pengeluaran".equals(jenis)) {

@@ -80,7 +80,7 @@ public class WebSecurityConfig {
             configuration.setAllowedOrigins(origins);
         }
 
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With"));
         configuration.setExposedHeaders(List.of("Authorization")); // expose header ke frontend
         configuration.setMaxAge(3600L); // cache preflight 1 jam

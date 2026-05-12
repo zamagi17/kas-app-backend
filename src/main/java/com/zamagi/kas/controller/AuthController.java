@@ -3,6 +3,7 @@ package com.zamagi.kas.controller;
 import com.zamagi.kas.model.User;
 import com.zamagi.kas.repository.UserRepository;
 import com.zamagi.kas.security.JwtUtils;
+import com.zamagi.kas.service.FirebaseService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +25,9 @@ public class AuthController {
 
     @Autowired
     JwtUtils jwtUtils;
+
+    @Autowired
+    private FirebaseService firebaseService;
 
     // ── VALIDASI ─────────────────────────────────────────────────────────────
     private String validasiUser(String username, String password) {
@@ -151,5 +155,98 @@ public class AuthController {
                 "refreshToken", newRefreshToken,
                 "username", username
         ));
+    }
+
+    // ── LOGIN DENGAN GOOGLE (FIREBASE) ───────────────────────────────────────
+    // POST /api/auth/google-login
+    // Body: { "idToken": "eyJ..." } (Firebase ID Token dari client)
+    // Return: { "token": "eyJ...", "refreshToken": "eyJ...", "username": "...", "namaLengkap": "..." }
+    @PostMapping("/google-login")
+    public ResponseEntity<?> googleLogin(@RequestBody Map<String, String> body) {
+        String idToken = body.get("idToken");
+
+        if (idToken == null || idToken.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "idToken wajib diisi"));
+        }
+
+        // Cek apakah Firebase sudah initialized
+        if (!firebaseService.isInitialized()) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                    "error", "Firebase belum dikonfigurasi di server. " +
+                            "Hubungi admin untuk mengatur FIREBASE_CONFIG_JSON environment variable."
+            ));
+        }
+
+        try {
+            // Verifikasi Firebase ID token
+            Map<String, String> firebaseUser = firebaseService.verifyIdToken(idToken);
+            
+            String email = firebaseUser.get("email");
+            String namaLengkap = firebaseUser.get("name");
+            String picture = firebaseUser.get("picture");
+
+            if (email == null || email.isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Email tidak ditemukan di Firebase token"));
+            }
+
+            // Cek apakah user dengan email ini sudah ada di database
+            var userOptional = userRepository.findAll().stream()
+                    .filter(u -> email.equalsIgnoreCase(u.getEmail()))
+                    .findFirst();
+
+            User user;
+            boolean isNewUser = false;
+
+            if (userOptional.isPresent()) {
+                // User sudah ada, gunakan akun lama
+                user = userOptional.get();
+                // Update nama lengkap dan avatar jika belum punya
+                if ((user.getNamaLengkap() == null || user.getNamaLengkap().isBlank()) && namaLengkap != null) {
+                    user.setNamaLengkap(namaLengkap);
+                }
+            } else {
+                // User baru, buat akun
+                isNewUser = true;
+                user = new User();
+                
+                // Generate username dari email (ambil bagian sebelum @)
+                String baseUsername = email.split("@")[0].replaceAll("[^a-zA-Z0-9_.]", "");
+                String username = baseUsername;
+                int counter = 1;
+                
+                // Cek apakah username sudah ada, jika ya tambahkan angka
+                while (userRepository.existsByUsername(username)) {
+                    username = baseUsername + counter;
+                    counter++;
+                }
+
+                user.setUsername(username);
+                user.setEmail(email);
+                user.setNamaLengkap(namaLengkap != null ? namaLengkap : baseUsername);
+                
+                // Set password random (tidak akan pernah digunakan karena login via Google)
+                user.setPassword(encoder.encode(java.util.UUID.randomUUID().toString()));
+                user.setTerimaLaporanBulanan(false);
+            }
+
+            // Simpan user (baru atau update)
+            userRepository.save(user);
+
+            // Generate JWT tokens
+            String accessToken = jwtUtils.generateAccessToken(user.getUsername());
+            String refreshToken = jwtUtils.generateRefreshToken(user.getUsername());
+
+            return ResponseEntity.ok(Map.of(
+                    "token", accessToken,
+                    "refreshToken", refreshToken,
+                    "username", user.getUsername(),
+                    "namaLengkap", user.getNamaLengkap(),
+                    "isNewUser", isNewUser
+            ));
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Firebase token tidak valid: " + e.getMessage()));
+        }
     }
 }

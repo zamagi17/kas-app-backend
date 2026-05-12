@@ -15,6 +15,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
@@ -55,6 +57,7 @@ public class WebSecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()  // login, register, refresh
                         .requestMatchers("/api/health").permitAll()
                         .requestMatchers("/error").permitAll()
+                        .requestMatchers("/avatars/**").permitAll()  // avatar files publik
                         .anyRequest().authenticated()
                 );
 
@@ -97,5 +100,17 @@ public class WebSecurityConfig {
         registration.addUrlPatterns("/api/auth/*");
         registration.setOrder(1);
         return registration;
+    }
+
+    @Bean
+    public WebMvcConfigurer webMvcConfigurer() {
+        return new WebMvcConfigurer() {
+            @Override
+            public void addResourceHandlers(ResourceHandlerRegistry registry) {
+                registry.addResourceHandler("/avatars/**")
+                        .addResourceLocations("file:uploads/avatars/")
+                        .setCachePeriod(3600); // cache 1 jam
+            }
+        };
     }
 }

@@ -36,6 +36,9 @@ public class User {
     @Column(name = "nomor_hp")
     private String nomorHp;
 
+    @Column(name = "avatar_path")
+    private String avatarPath;
+
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;
@@ -105,6 +108,14 @@ public class User {
 
     public void setNomorHp(String nomorHp) {
         this.nomorHp = nomorHp;
+    }
+
+    public String getAvatarPath() {
+        return avatarPath;
+    }
+
+    public void setAvatarPath(String avatarPath) {
+        this.avatarPath = avatarPath;
     }
 
     public LocalDateTime getCreatedAt() {

@@ -4,11 +4,19 @@ import com.zamagi.kas.model.User;
 import com.zamagi.kas.repository.UserRepository;
 import com.zamagi.kas.security.JwtUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -21,6 +29,9 @@ import org.springframework.security.core.Authentication;
 @RequestMapping("/api/user")
 @CrossOrigin(origins = "*")
 public class UserPreferencesController {
+
+    private static final Path AVATAR_UPLOAD_DIR = Paths.get("uploads", "avatars");
+    private static final long MAX_AVATAR_SIZE = 5 * 1024 * 1024; // 5 MB
 
     @Autowired
     private UserRepository userRepository;
@@ -164,8 +175,65 @@ public class UserPreferencesController {
         profil.put("email", user.getEmail());
         profil.put("nomorHp", user.getNomorHp());
         profil.put("terimaLaporanBulanan", String.valueOf(user.getTerimaLaporanBulanan()));
+        if (user.getAvatarPath() != null && !user.getAvatarPath().isBlank()) {
+            profil.put("avatarUrl", ServletUriComponentsBuilder.fromCurrentContextPath()
+                    .path("/avatars/")
+                    .path(user.getAvatarPath())
+                    .toUriString());
+        } else {
+            profil.put("avatarUrl", "");
+        }
 
         return ResponseEntity.ok(profil);
+    }
+
+    @PutMapping(value = "/profile/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> uploadProfilePhoto(@RequestParam("file") MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "File foto profil wajib dipilih"));
+        }
+
+        if (file.getSize() > MAX_AVATAR_SIZE) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Ukuran file maksimal 5MB"));
+        }
+
+        String originalFilename = StringUtils.cleanPath(file.getOriginalFilename());
+        int dotIndex = originalFilename.lastIndexOf('.');
+        if (dotIndex < 0) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Format file tidak dikenali"));
+        }
+
+        String extension = originalFilename.substring(dotIndex + 1).toLowerCase();
+        if (!List.of("png", "jpg", "jpeg", "webp", "gif").contains(extension)) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Hanya format gambar PNG, JPG, JPEG, WEBP, atau GIF yang diperbolehkan"));
+        }
+
+        User user = getCurrentUser();
+        try {
+            Files.createDirectories(AVATAR_UPLOAD_DIR);
+            String avatarFilename = "avatar_" + user.getUsername() + "_" + System.currentTimeMillis() + "." + extension;
+            Path targetPath = AVATAR_UPLOAD_DIR.resolve(avatarFilename).normalize();
+            Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
+
+            if (user.getAvatarPath() != null && !user.getAvatarPath().isBlank()) {
+                Path oldPath = AVATAR_UPLOAD_DIR.resolve(user.getAvatarPath()).normalize();
+                if (Files.exists(oldPath)) {
+                    Files.delete(oldPath);
+                }
+            }
+
+            user.setAvatarPath(avatarFilename);
+            userRepository.save(user);
+
+            String avatarUrl = ServletUriComponentsBuilder.fromCurrentContextPath()
+                    .path("/avatars/")
+                    .path(avatarFilename)
+                    .toUriString();
+
+            return ResponseEntity.ok(Map.of("message", "Foto profil berhasil disimpan", "avatarUrl", avatarUrl));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("message", "Gagal menyimpan foto profil: " + e.getMessage()));
+        }
     }
 
     // 2. PUT: Menyimpan perubahan data profil yang diedit dari frontend

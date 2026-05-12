@@ -2,6 +2,7 @@ package com.zamagi.kas.security;
 
 import java.util.Arrays;
 import java.util.List;
+import java.nio.file.Paths;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -37,6 +38,9 @@ public class WebSecurityConfig {
     // Fallback ke "*" untuk development
     @Value("${app.cors.allowed-origins:*}")
     private String allowedOriginsRaw;
+
+    @Value("${app.upload.avatar-dir:uploads/avatars}")
+    private String avatarUploadDirRaw;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -107,8 +111,16 @@ public class WebSecurityConfig {
         return new WebMvcConfigurer() {
             @Override
             public void addResourceHandlers(ResourceHandlerRegistry registry) {
+                String avatarResourceLocation = Paths.get(avatarUploadDirRaw)
+                        .toAbsolutePath()
+                        .normalize()
+                        .toUri()
+                        .toString();
+                if (!avatarResourceLocation.endsWith("/")) {
+                    avatarResourceLocation = avatarResourceLocation + "/";
+                }
                 registry.addResourceHandler("/avatars/**")
-                        .addResourceLocations("file:uploads/avatars/")
+                        .addResourceLocations(avatarResourceLocation)
                         .setCachePeriod(3600); // cache 1 jam
             }
         };

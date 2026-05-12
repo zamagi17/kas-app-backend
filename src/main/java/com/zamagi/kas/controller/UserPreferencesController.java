@@ -4,6 +4,7 @@ import com.zamagi.kas.model.User;
 import com.zamagi.kas.repository.UserRepository;
 import com.zamagi.kas.security.JwtUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -30,8 +31,10 @@ import org.springframework.security.core.Authentication;
 @CrossOrigin(origins = "*")
 public class UserPreferencesController {
 
-    private static final Path AVATAR_UPLOAD_DIR = Paths.get("uploads", "avatars");
     private static final long MAX_AVATAR_SIZE = 5 * 1024 * 1024; // 5 MB
+
+    @Value("${app.upload.avatar-dir:uploads/avatars}")
+    private String avatarUploadDirRaw;
 
     @Autowired
     private UserRepository userRepository;
@@ -46,6 +49,10 @@ public class UserPreferencesController {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
         return userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User tidak ditemukan"));
+    }
+
+    private Path getAvatarUploadDir() {
+        return Paths.get(avatarUploadDirRaw).toAbsolutePath().normalize();
     }
 
     // ── GANTI PASSWORD ────────────────────────────────────────────────────────
@@ -88,6 +95,10 @@ public class UserPreferencesController {
 
         // ── Verifikasi password lama ────────────────────────────────────────
         User user = getCurrentUser();
+        if (!"LOCAL".equalsIgnoreCase(user.getAuthProvider())) {
+            return ResponseEntity.badRequest().body("Password akun Google/Firebase dikelola oleh provider login");
+        }
+
         if (!encoder.matches(passwordLama, user.getPassword())) {
             return ResponseEntity.status(401).body("Password lama salah");
         }
@@ -118,34 +129,41 @@ public class UserPreferencesController {
 
     @PutMapping("/preferences")
     public ResponseEntity<?> updatePreferences(@RequestBody Map<String, List<String>> body) {
-        List<String> dompetList = body.get("dompetHarian");
-
-        if (dompetList == null) {
-            return ResponseEntity.badRequest().body("Field 'dompetHarian' wajib ada");
-        }
-
-        for (String item : dompetList) {
-            if (item == null || item.isBlank()) {
-                return ResponseEntity.badRequest().body("Nama aset tidak boleh kosong");
+        try {
+            if (body == null) {
+                return ResponseEntity.badRequest().body("Body request wajib ada");
             }
-            if (item.length() > 100) {
-                return ResponseEntity.badRequest().body("Nama aset maksimal 100 karakter");
+
+            List<String> dompetList = body.get("dompetHarian");
+            if (dompetList == null) {
+                return ResponseEntity.badRequest().body("Field 'dompetHarian' wajib ada");
             }
+
+            for (String item : dompetList) {
+                if (item == null || item.isBlank()) {
+                    return ResponseEntity.badRequest().body("Nama aset tidak boleh kosong");
+                }
+                if (item.length() > 100) {
+                    return ResponseEntity.badRequest().body("Nama aset maksimal 100 karakter");
+                }
+            }
+
+            User user = getCurrentUser();
+            String stored = dompetList.stream()
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.joining("||"));
+
+            user.setDompetHarian(stored);
+            userRepository.save(user);
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "Dompet harian berhasil disimpan",
+                    "dompetHarian", dompetList
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Gagal menyimpan preferences: " + e.getMessage());
         }
-
-        User user = getCurrentUser();
-        String stored = dompetList.stream()
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.joining("||"));
-
-        user.setDompetHarian(stored);
-        userRepository.save(user);
-
-        return ResponseEntity.ok(Map.of(
-                "message", "Dompet harian berhasil disimpan",
-                "dompetHarian", dompetList
-        ));
     }
 
     private List<String> parseDompetHarian(String value) {
@@ -175,6 +193,7 @@ public class UserPreferencesController {
         profil.put("email", user.getEmail());
         profil.put("nomorHp", user.getNomorHp());
         profil.put("terimaLaporanBulanan", String.valueOf(user.getTerimaLaporanBulanan()));
+        profil.put("authProvider", user.getAuthProvider() == null ? "LOCAL" : user.getAuthProvider());
         if (user.getAvatarPath() != null && !user.getAvatarPath().isBlank()) {
             profil.put("avatarUrl", ServletUriComponentsBuilder.fromCurrentContextPath()
                     .path("/avatars/")
@@ -210,13 +229,16 @@ public class UserPreferencesController {
 
         User user = getCurrentUser();
         try {
-            Files.createDirectories(AVATAR_UPLOAD_DIR);
+            Path avatarUploadDir = getAvatarUploadDir();
+            System.out.println("[ProfilePhoto] Avatar upload dir=" + avatarUploadDir);
+            Files.createDirectories(avatarUploadDir);
+
             String avatarFilename = "avatar_" + user.getUsername() + "_" + System.currentTimeMillis() + "." + extension;
-            Path targetPath = AVATAR_UPLOAD_DIR.resolve(avatarFilename).normalize();
+            Path targetPath = avatarUploadDir.resolve(avatarFilename).normalize();
             Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
 
             if (user.getAvatarPath() != null && !user.getAvatarPath().isBlank()) {
-                Path oldPath = AVATAR_UPLOAD_DIR.resolve(user.getAvatarPath()).normalize();
+                Path oldPath = avatarUploadDir.resolve(user.getAvatarPath()).normalize();
                 if (Files.exists(oldPath)) {
                     Files.delete(oldPath);
                 }
@@ -232,6 +254,9 @@ public class UserPreferencesController {
 
             return ResponseEntity.ok(Map.of("message", "Foto profil berhasil disimpan", "avatarUrl", avatarUrl));
         } catch (Exception e) {
+            System.err.println("[ProfilePhoto] Gagal menyimpan foto profil ke dir=" + getAvatarUploadDir()
+                    + ": " + e.getClass().getName() + " - " + e.getMessage());
+            e.printStackTrace();
             return ResponseEntity.status(500).body(Map.of("message", "Gagal menyimpan foto profil: " + e.getMessage()));
         }
     }

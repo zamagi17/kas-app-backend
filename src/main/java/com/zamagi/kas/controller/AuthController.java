@@ -83,6 +83,7 @@ public class AuthController {
 
         // Enkripsi password
         user.setPassword(encoder.encode(user.getPassword()));
+        user.setAuthProvider("LOCAL");
 
         // Simpan ke database
         // (namaLengkap dan email otomatis ikut tersimpan karena sudah ada di dalam object 'user')
@@ -111,7 +112,8 @@ public class AuthController {
                 return ResponseEntity.ok(Map.of(
                         "token", accessToken, // nama "token" tetap sama agar frontend tidak perlu banyak ubah
                         "refreshToken", refreshToken,
-                        "username", u.getUsername()
+                        "username", u.getUsername(),
+                        "authProvider", u.getAuthProvider() == null ? "LOCAL" : u.getAuthProvider()
                 ));
             }
         }
@@ -200,6 +202,7 @@ public class AuthController {
             if (userOptional.isPresent()) {
                 // User sudah ada, gunakan akun lama
                 user = userOptional.get();
+                user.setAuthProvider("GOOGLE");
                 // Update nama lengkap dan avatar jika belum punya
                 if ((user.getNamaLengkap() == null || user.getNamaLengkap().isBlank()) && namaLengkap != null) {
                     user.setNamaLengkap(namaLengkap);
@@ -226,6 +229,7 @@ public class AuthController {
                 
                 // Set password random (tidak akan pernah digunakan karena login via Google)
                 user.setPassword(encoder.encode(java.util.UUID.randomUUID().toString()));
+                user.setAuthProvider("GOOGLE");
                 user.setTerimaLaporanBulanan(false);
             }
 
@@ -241,6 +245,7 @@ public class AuthController {
                     "refreshToken", refreshToken,
                     "username", user.getUsername(),
                     "namaLengkap", user.getNamaLengkap(),
+                    "authProvider", user.getAuthProvider(),
                     "isNewUser", isNewUser
             ));
 

@@ -22,6 +22,9 @@ public class User {
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
 
+    @Column(name = "auth_provider")
+    private String authProvider = "LOCAL";
+
     // Menyimpan daftar aset dompet harian sebagai JSON string
     // Contoh: ["BCA","SeaBank","Dompet Tunai"]
     @Column(name = "dompet_harian", columnDefinition = "TEXT")
@@ -76,6 +79,14 @@ public class User {
 
     public void setPassword(String password) {
         this.password = password;
+    }
+
+    public String getAuthProvider() {
+        return authProvider == null ? "LOCAL" : authProvider;
+    }
+
+    public void setAuthProvider(String authProvider) {
+        this.authProvider = authProvider;
     }
 
     public String getDompetHarian() {

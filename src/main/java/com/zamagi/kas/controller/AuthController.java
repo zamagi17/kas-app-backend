@@ -107,13 +107,15 @@ public class AuthController {
         if (userOptional.isPresent()) {
             User u = userOptional.get();
             if (encoder.matches(user.getPassword(), u.getPassword())) {
-                String accessToken = jwtUtils.generateAccessToken(u.getUsername());
-                String refreshToken = jwtUtils.generateRefreshToken(u.getUsername());
+                String loginProvider = "LOCAL";
+                String accessToken = jwtUtils.generateAccessToken(u.getUsername(), loginProvider);
+                String refreshToken = jwtUtils.generateRefreshToken(u.getUsername(), loginProvider);
                 return ResponseEntity.ok(Map.of(
                         "token", accessToken, // nama "token" tetap sama agar frontend tidak perlu banyak ubah
                         "refreshToken", refreshToken,
                         "username", u.getUsername(),
-                        "authProvider", u.getAuthProvider() == null ? "LOCAL" : u.getAuthProvider()
+                        "authProvider", loginProvider,
+                        "accountAuthProvider", u.getAuthProvider() == null ? "LOCAL" : u.getAuthProvider()
                 ));
             }
         }
@@ -143,19 +145,26 @@ public class AuthController {
         String username = jwtUtils.getUserNameFromJwtToken(refreshToken);
 
         // Pastikan user masih ada di database
-        if (!userRepository.existsByUsername(username)) {
+        var userOptional = userRepository.findByUsername(username);
+        if (userOptional.isEmpty()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("error", "User tidak ditemukan"));
         }
 
+        String loginProvider = jwtUtils.getLoginProviderFromToken(refreshToken);
+        if (loginProvider == null || loginProvider.isBlank()) {
+            loginProvider = userOptional.get().getAuthProvider();
+        }
+
         // Issue token baru
-        String newAccessToken = jwtUtils.generateAccessToken(username);
-        String newRefreshToken = jwtUtils.generateRefreshToken(username);
+        String newAccessToken = jwtUtils.generateAccessToken(username, loginProvider);
+        String newRefreshToken = jwtUtils.generateRefreshToken(username, loginProvider);
 
         return ResponseEntity.ok(Map.of(
                 "token", newAccessToken,
                 "refreshToken", newRefreshToken,
-                "username", username
+                "username", username,
+                "authProvider", loginProvider
         ));
     }
 
@@ -202,7 +211,11 @@ public class AuthController {
             if (userOptional.isPresent()) {
                 // User sudah ada, gunakan akun lama
                 user = userOptional.get();
-                user.setAuthProvider("GOOGLE");
+                if ("LOCAL".equalsIgnoreCase(user.getAuthProvider()) || "HYBRID".equalsIgnoreCase(user.getAuthProvider())) {
+                    user.setAuthProvider("HYBRID");
+                } else {
+                    user.setAuthProvider("GOOGLE");
+                }
                 // Update nama lengkap dan avatar jika belum punya
                 if ((user.getNamaLengkap() == null || user.getNamaLengkap().isBlank()) && namaLengkap != null) {
                     user.setNamaLengkap(namaLengkap);
@@ -237,15 +250,17 @@ public class AuthController {
             userRepository.save(user);
 
             // Generate JWT tokens
-            String accessToken = jwtUtils.generateAccessToken(user.getUsername());
-            String refreshToken = jwtUtils.generateRefreshToken(user.getUsername());
+            String loginProvider = "GOOGLE";
+            String accessToken = jwtUtils.generateAccessToken(user.getUsername(), loginProvider);
+            String refreshToken = jwtUtils.generateRefreshToken(user.getUsername(), loginProvider);
 
             return ResponseEntity.ok(Map.of(
                     "token", accessToken,
                     "refreshToken", refreshToken,
                     "username", user.getUsername(),
                     "namaLengkap", user.getNamaLengkap(),
-                    "authProvider", user.getAuthProvider(),
+                    "authProvider", loginProvider,
+                    "accountAuthProvider", user.getAuthProvider(),
                     "isNewUser", isNewUser
             ));
 

@@ -44,9 +44,14 @@ public class JwtUtils {
     // ── ACCESS TOKEN (15 menit) ──────────────────────────────────────────────
 
     public String generateAccessToken(String username) {
+        return generateAccessToken(username, "LOCAL");
+    }
+
+    public String generateAccessToken(String username, String loginProvider) {
         return Jwts.builder()
                 .setSubject(username)
                 .claim("type", "access")
+                .claim("loginProvider", normalizeLoginProvider(loginProvider))
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + jwtExpirationMs))
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256)
@@ -56,9 +61,14 @@ public class JwtUtils {
     // ── REFRESH TOKEN (7 hari) ───────────────────────────────────────────────
 
     public String generateRefreshToken(String username) {
+        return generateRefreshToken(username, "LOCAL");
+    }
+
+    public String generateRefreshToken(String username, String loginProvider) {
         return Jwts.builder()
                 .setSubject(username)
                 .claim("type", "refresh")
+                .claim("loginProvider", normalizeLoginProvider(loginProvider))
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + refreshExpirationMs))
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256)
@@ -77,6 +87,18 @@ public class JwtUtils {
 
     public Date getExpirationFromToken(String token) {
         return parseClaims(token).getExpiration();
+    }
+
+    public String getLoginProviderFromToken(String token) {
+        Object loginProvider = parseClaims(token).get("loginProvider");
+        return loginProvider == null ? null : loginProvider.toString();
+    }
+
+    private String normalizeLoginProvider(String loginProvider) {
+        if (loginProvider == null || loginProvider.isBlank()) {
+            return "LOCAL";
+        }
+        return loginProvider.trim().toUpperCase();
     }
 
     private Claims parseClaims(String token) {

@@ -3,6 +3,7 @@ package com.zamagi.kas.controller;
 import com.zamagi.kas.model.User;
 import com.zamagi.kas.repository.UserRepository;
 import com.zamagi.kas.security.JwtUtils;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -55,17 +56,43 @@ public class UserPreferencesController {
         return Paths.get(avatarUploadDirRaw).toAbsolutePath().normalize();
     }
 
+    private String parseJwt(HttpServletRequest request) {
+        String headerAuth = request.getHeader("Authorization");
+        if (headerAuth != null && headerAuth.startsWith("Bearer ")) {
+            return headerAuth.substring(7);
+        }
+        return null;
+    }
+
+    private String getLoginProvider(HttpServletRequest request, User user) {
+        String token = parseJwt(request);
+        if (token != null) {
+            try {
+                String loginProvider = jwtUtils.getLoginProviderFromToken(token);
+                if (loginProvider != null && !loginProvider.isBlank()) {
+                    return loginProvider;
+                }
+            } catch (Exception ignored) {
+                // Token sudah divalidasi oleh security filter; fallback dipakai untuk token lama.
+            }
+        }
+        return user.getAuthProvider();
+    }
+
     // ── GANTI PASSWORD ────────────────────────────────────────────────────────
     // PUT /api/user/password
     // Body: { "passwordLama": "abc123", "passwordBaru": "xyz789AB", "konfirmasi": "xyz789AB" }
     @PutMapping("/password")
-    public ResponseEntity<?> gantiPassword(@RequestBody Map<String, String> body) {
+    public ResponseEntity<?> gantiPassword(@RequestBody Map<String, String> body, HttpServletRequest request) {
         String passwordLama = body.get("passwordLama");
         String passwordBaru = body.get("passwordBaru");
         String konfirmasi = body.get("konfirmasi");
+        User user = getCurrentUser();
+        String loginProvider = getLoginProvider(request, user);
+        boolean isLocalLogin = "LOCAL".equalsIgnoreCase(loginProvider);
 
         // ── Validasi input ──────────────────────────────────────────────────
-        if (passwordLama == null || passwordLama.isBlank()) {
+        if (isLocalLogin && (passwordLama == null || passwordLama.isBlank())) {
             return ResponseEntity.badRequest().body("Password lama wajib diisi");
         }
 
@@ -89,33 +116,33 @@ public class UserPreferencesController {
             return ResponseEntity.badRequest().body("Konfirmasi password tidak cocok");
         }
 
-        if (passwordLama.equals(passwordBaru)) {
+        if (isLocalLogin && passwordLama.equals(passwordBaru)) {
             return ResponseEntity.badRequest().body("Password baru tidak boleh sama dengan password lama");
         }
 
         // ── Verifikasi password lama ────────────────────────────────────────
-        User user = getCurrentUser();
-        if (!"LOCAL".equalsIgnoreCase(user.getAuthProvider())) {
-            return ResponseEntity.badRequest().body("Password akun Google/Firebase dikelola oleh provider login");
-        }
-
-        if (!encoder.matches(passwordLama, user.getPassword())) {
+        if (isLocalLogin && !encoder.matches(passwordLama, user.getPassword())) {
             return ResponseEntity.status(401).body("Password lama salah");
         }
 
         // ── Simpan password baru ────────────────────────────────────────────
         user.setPassword(encoder.encode(passwordBaru));
+        if (!isLocalLogin && !"HYBRID".equalsIgnoreCase(user.getAuthProvider())) {
+            user.setAuthProvider("HYBRID");
+        }
         userRepository.save(user);
 
         // Kembalikan token baru agar user tidak perlu login ulang
         // (token lama masih valid sampai expire, tapi setidaknya kita beri yang baru)
-        String newAccessToken = jwtUtils.generateAccessToken(user.getUsername());
-        String newRefreshToken = jwtUtils.generateRefreshToken(user.getUsername());
+        String newAccessToken = jwtUtils.generateAccessToken(user.getUsername(), loginProvider);
+        String newRefreshToken = jwtUtils.generateRefreshToken(user.getUsername(), loginProvider);
 
         return ResponseEntity.ok(Map.of(
-                "message", "Password berhasil diubah",
+                "message", isLocalLogin ? "Password berhasil diubah" : "Password lokal berhasil dibuat",
                 "token", newAccessToken,
-                "refreshToken", newRefreshToken
+                "refreshToken", newRefreshToken,
+                "authProvider", loginProvider,
+                "accountAuthProvider", user.getAuthProvider()
         ));
     }
 

@@ -22,6 +22,7 @@ import java.util.stream.Collectors;
 public class PasswordResetService {
 
     public record PasswordResetResult(boolean success, String code, String message) {
+
     }
 
     @Autowired
@@ -39,12 +40,13 @@ public class PasswordResetService {
     // Rate limiting: maksimal 3 request per jam per user
     private static final int MAX_FORGOT_PASSWORD_REQUESTS_PER_HOUR = 3;
     private static final int FORGOT_PASSWORD_RATE_LIMIT_HOURS = 1;
-    private static final String GENERIC_FORGOT_PASSWORD_MESSAGE =
-            "Jika username terdaftar, link reset password akan dikirim ke email Anda";
+    private static final String GENERIC_FORGOT_PASSWORD_MESSAGE
+            = "Jika username terdaftar, link reset password akan dikirim ke email Anda";
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     /**
      * Generate reset token dan kirim email ke user
+     *
      * @param username Username pengguna yang ingin reset password
      * @param frontendBaseUrl Base URL frontend untuk reset password link
      * @return Pesan sukses atau error
@@ -106,6 +108,9 @@ public class PasswordResetService {
             return new PasswordResetResult(true, "RESET_EMAIL_SENT", GENERIC_FORGOT_PASSWORD_MESSAGE);
         } catch (Exception e) {
             System.err.println("Error saat mengirim reset email: " + e.getMessage());
+
+            e.printStackTrace();
+
             // Clear token jika gagal kirim email
             try {
                 user.setPasswordResetToken(null);
@@ -121,6 +126,7 @@ public class PasswordResetService {
 
     /**
      * Validasi dan update password menggunakan reset token
+     *
      * @param resetToken Token dari URL parameter
      * @param newPassword Password baru
      * @return Pesan sukses atau error
@@ -152,8 +158,8 @@ public class PasswordResetService {
         User user = userOptional.get();
 
         // Cek apakah token sudah expired
-        if (user.getPasswordResetExpiresAt() == null ||
-            LocalDateTime.now().isAfter(user.getPasswordResetExpiresAt())) {
+        if (user.getPasswordResetExpiresAt() == null
+                || LocalDateTime.now().isAfter(user.getPasswordResetExpiresAt())) {
 
             // Clear token yang sudah expired
             user.setPasswordResetToken(null);
@@ -242,26 +248,27 @@ public class PasswordResetService {
 
     /**
      * Cek apakah user sudah melewati batas rate limiting
+     *
      * @param user User yang akan dicek
      * @return true jika boleh request, false jika sudah melewati limit
      */
     private boolean isRateLimitPassed(User user) {
         LocalDateTime lastRequest = user.getLastForgotPasswordRequest();
         Integer requestCount = user.getForgotPasswordRequestCount();
-        
+
         if (lastRequest == null || requestCount == null) {
             // Belum pernah request, boleh lanjut
             return true;
         }
-        
+
         LocalDateTime oneHourAgo = LocalDateTime.now().minusHours(FORGOT_PASSWORD_RATE_LIMIT_HOURS);
-        
+
         if (lastRequest.isBefore(oneHourAgo)) {
             // Sudah lebih dari 1 jam, reset counter
             user.setForgotPasswordRequestCount(0);
             return true;
         }
-        
+
         // Cek apakah sudah melewati limit
         return requestCount < MAX_FORGOT_PASSWORD_REQUESTS_PER_HOUR;
     }
@@ -328,12 +335,14 @@ public class PasswordResetService {
                 <style>
                     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; }
                     .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
-                    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px 30px; text-align: center; }
+                    /* PERHATIKAN: 0% dan 100% diubah menjadi 0%% dan 100%% agar tidak bentrok dengan String.format */
+                    .header { background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); color: white; padding: 40px 30px; text-align: center; }
                     .header h1 { margin: 0; font-size: 28px; font-weight: 700; }
                     .header p { margin: 10px 0 0 0; opacity: 0.9; font-size: 16px; }
                     .content { padding: 40px 30px; color: #374151; line-height: 1.6; }
                     .content h2 { color: #1f2937; margin-top: 0; font-size: 24px; }
-                    .reset-button { display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 20px 0; box-shadow: 0 4px 14px rgba(102, 126, 234, 0.4); }
+                    /* PERHATIKAN: 0%% dan 100%% di sini juga */
+                    .reset-button { display: inline-block; background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 20px 0; box-shadow: 0 4px 14px rgba(102, 126, 234, 0.4); }
                     .reset-button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6); }
                     .warning { background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; margin: 20px 0; border-radius: 6px; }
                     .warning h3 { margin: 0 0 8px 0; color: #92400e; font-size: 16px; }
@@ -398,6 +407,7 @@ public class PasswordResetService {
 
     /**
      * Validasi apakah reset token masih valid (belum expired)
+     *
      * @param resetToken Token yang akan divalidasi
      * @return true jika token valid, false jika tidak valid/expired
      */
@@ -415,8 +425,8 @@ public class PasswordResetService {
         User user = userOptional.get();
 
         // Cek apakah token sudah expired
-        if (user.getPasswordResetExpiresAt() == null ||
-            LocalDateTime.now().isAfter(user.getPasswordResetExpiresAt())) {
+        if (user.getPasswordResetExpiresAt() == null
+                || LocalDateTime.now().isAfter(user.getPasswordResetExpiresAt())) {
 
             // Clear token yang sudah expired
             user.setPasswordResetToken(null);
@@ -430,18 +440,19 @@ public class PasswordResetService {
     }
 
     /**
-     * Membersihkan semua token yang sudah kadaluarsa di database.
-     * Dapat dipanggil melalui Scheduler (Cron Job).
+     * Membersihkan semua token yang sudah kadaluarsa di database. Dapat
+     * dipanggil melalui Scheduler (Cron Job).
+     *
      * @return Jumlah token yang berhasil dihapus
      */
     public int cleanupExpiredTokens() {
         try {
             // Cari semua user yang punya token expired
             List<User> usersWithExpiredTokens = userRepository.findAll().stream()
-                .filter(user -> user.getPasswordResetToken() != null &&
-                               user.getPasswordResetExpiresAt() != null &&
-                               LocalDateTime.now().isAfter(user.getPasswordResetExpiresAt()))
-                .collect(Collectors.toList());
+                    .filter(user -> user.getPasswordResetToken() != null
+                    && user.getPasswordResetExpiresAt() != null
+                    && LocalDateTime.now().isAfter(user.getPasswordResetExpiresAt()))
+                    .collect(Collectors.toList());
 
             // Clear token expired
             for (User user : usersWithExpiredTokens) {

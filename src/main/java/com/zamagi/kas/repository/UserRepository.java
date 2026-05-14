@@ -18,6 +18,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
     // Fungsi untuk mengecek apakah username sudah dipakai saat mendaftar (Register)
     Boolean existsByUsername(String username);
 
+    // Method untuk mencari user berdasarkan password reset token
+    Optional<User> findByPasswordResetToken(String passwordResetToken);
+
     @Query("SELECT u FROM User u WHERE u.terimaLaporanBulanan = true AND u.email IS NOT NULL AND u.email <> ''")
     List<User> findUsersForMonthlyReport();
 }

@@ -48,10 +48,15 @@ public class JwtUtils {
     }
 
     public String generateAccessToken(String username, String loginProvider) {
+        return generateAccessToken(username, loginProvider, 0);
+    }
+
+    public String generateAccessToken(String username, String loginProvider, Integer tokenVersion) {
         return Jwts.builder()
                 .setSubject(username)
                 .claim("type", "access")
                 .claim("loginProvider", normalizeLoginProvider(loginProvider))
+                .claim("tokenVersion", tokenVersion == null ? 0 : tokenVersion)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + jwtExpirationMs))
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256)
@@ -65,10 +70,15 @@ public class JwtUtils {
     }
 
     public String generateRefreshToken(String username, String loginProvider) {
+        return generateRefreshToken(username, loginProvider, 0);
+    }
+
+    public String generateRefreshToken(String username, String loginProvider, Integer tokenVersion) {
         return Jwts.builder()
                 .setSubject(username)
                 .claim("type", "refresh")
                 .claim("loginProvider", normalizeLoginProvider(loginProvider))
+                .claim("tokenVersion", tokenVersion == null ? 0 : tokenVersion)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + refreshExpirationMs))
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256)
@@ -92,6 +102,21 @@ public class JwtUtils {
     public String getLoginProviderFromToken(String token) {
         Object loginProvider = parseClaims(token).get("loginProvider");
         return loginProvider == null ? null : loginProvider.toString();
+    }
+
+    public int getTokenVersionFromToken(String token) {
+        Object tokenVersion = parseClaims(token).get("tokenVersion");
+        if (tokenVersion instanceof Number number) {
+            return number.intValue();
+        }
+        if (tokenVersion != null) {
+            try {
+                return Integer.parseInt(tokenVersion.toString());
+            } catch (NumberFormatException ignored) {
+                return 0;
+            }
+        }
+        return 0;
     }
 
     private String normalizeLoginProvider(String loginProvider) {

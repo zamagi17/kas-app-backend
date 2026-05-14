@@ -4,6 +4,8 @@ import com.zamagi.kas.model.User;
 import com.zamagi.kas.repository.UserRepository;
 import com.zamagi.kas.security.JwtUtils;
 import com.zamagi.kas.service.FirebaseService;
+import com.zamagi.kas.service.PasswordResetService;
+import com.zamagi.kas.service.PasswordResetService.PasswordResetResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -28,6 +30,9 @@ public class AuthController {
 
     @Autowired
     private FirebaseService firebaseService;
+
+    @Autowired
+    private PasswordResetService passwordResetService;
 
     // ── VALIDASI ─────────────────────────────────────────────────────────────
     private String validasiUser(String username, String password) {
@@ -108,8 +113,8 @@ public class AuthController {
             User u = userOptional.get();
             if (encoder.matches(user.getPassword(), u.getPassword())) {
                 String loginProvider = "LOCAL";
-                String accessToken = jwtUtils.generateAccessToken(u.getUsername(), loginProvider);
-                String refreshToken = jwtUtils.generateRefreshToken(u.getUsername(), loginProvider);
+                String accessToken = jwtUtils.generateAccessToken(u.getUsername(), loginProvider, u.getTokenVersion());
+                String refreshToken = jwtUtils.generateRefreshToken(u.getUsername(), loginProvider, u.getTokenVersion());
                 return ResponseEntity.ok(Map.of(
                         "token", accessToken, // nama "token" tetap sama agar frontend tidak perlu banyak ubah
                         "refreshToken", refreshToken,
@@ -151,14 +156,20 @@ public class AuthController {
                     .body(Map.of("error", "User tidak ditemukan"));
         }
 
+        User user = userOptional.get();
+        if (jwtUtils.getTokenVersionFromToken(refreshToken) != user.getTokenVersion()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Refresh token tidak valid atau sudah dicabut"));
+        }
+
         String loginProvider = jwtUtils.getLoginProviderFromToken(refreshToken);
         if (loginProvider == null || loginProvider.isBlank()) {
-            loginProvider = userOptional.get().getAuthProvider();
+            loginProvider = user.getAuthProvider();
         }
 
         // Issue token baru
-        String newAccessToken = jwtUtils.generateAccessToken(username, loginProvider);
-        String newRefreshToken = jwtUtils.generateRefreshToken(username, loginProvider);
+        String newAccessToken = jwtUtils.generateAccessToken(username, loginProvider, user.getTokenVersion());
+        String newRefreshToken = jwtUtils.generateRefreshToken(username, loginProvider, user.getTokenVersion());
 
         return ResponseEntity.ok(Map.of(
                 "token", newAccessToken,
@@ -183,15 +194,15 @@ public class AuthController {
         // Cek apakah Firebase sudah initialized
         if (!firebaseService.isInitialized()) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
-                    "error", "Firebase belum dikonfigurasi di server. " +
-                            "Hubungi admin untuk mengatur FIREBASE_CONFIG_JSON environment variable."
+                    "error", "Firebase belum dikonfigurasi di server. "
+                    + "Hubungi admin untuk mengatur FIREBASE_CONFIG_JSON environment variable."
             ));
         }
 
         try {
             // Verifikasi Firebase ID token
             Map<String, String> firebaseUser = firebaseService.verifyIdToken(idToken);
-            
+
             String email = firebaseUser.get("email");
             String namaLengkap = firebaseUser.get("name");
             String picture = firebaseUser.get("picture");
@@ -224,12 +235,12 @@ public class AuthController {
                 // User baru, buat akun
                 isNewUser = true;
                 user = new User();
-                
+
                 // Generate username dari email (ambil bagian sebelum @)
                 String baseUsername = email.split("@")[0].replaceAll("[^a-zA-Z0-9_.]", "");
                 String username = baseUsername;
                 int counter = 1;
-                
+
                 // Cek apakah username sudah ada, jika ya tambahkan angka
                 while (userRepository.existsByUsername(username)) {
                     username = baseUsername + counter;
@@ -239,7 +250,7 @@ public class AuthController {
                 user.setUsername(username);
                 user.setEmail(email);
                 user.setNamaLengkap(namaLengkap != null ? namaLengkap : baseUsername);
-                
+
                 // Set password random (tidak akan pernah digunakan karena login via Google)
                 user.setPassword(encoder.encode(java.util.UUID.randomUUID().toString()));
                 user.setAuthProvider("GOOGLE");
@@ -251,8 +262,8 @@ public class AuthController {
 
             // Generate JWT tokens
             String loginProvider = "GOOGLE";
-            String accessToken = jwtUtils.generateAccessToken(user.getUsername(), loginProvider);
-            String refreshToken = jwtUtils.generateRefreshToken(user.getUsername(), loginProvider);
+            String accessToken = jwtUtils.generateAccessToken(user.getUsername(), loginProvider, user.getTokenVersion());
+            String refreshToken = jwtUtils.generateRefreshToken(user.getUsername(), loginProvider, user.getTokenVersion());
 
             return ResponseEntity.ok(Map.of(
                     "token", accessToken,
@@ -268,5 +279,74 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("error", "Firebase token tidak valid: " + e.getMessage()));
         }
+    }
+
+    // ── FORGOT PASSWORD ──────────────────────────────────────────────────────
+    // POST /api/auth/forgot-password
+    // Body: { "username": "user123", "frontendBaseUrl": "https://zonakas.com" }
+    // Return: { "message": "Jika username terdaftar..." }
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> body) {
+        String username = body.get("username");
+        String frontendBaseUrl = body.get("frontendBaseUrl");
+
+        if (username == null || username.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Username wajib diisi"));
+        }
+
+        if (frontendBaseUrl == null || frontendBaseUrl.isBlank()) {
+            frontendBaseUrl = "http://localhost:3000"; // Default untuk development
+        }
+
+        PasswordResetResult result = passwordResetService.generateResetToken(username, frontendBaseUrl);
+        if (!result.success()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "code", result.code(),
+                    "message", result.message()
+            ));
+        }
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "code", result.code(),
+                "message", result.message()
+        ));
+    }
+
+    // ── RESET PASSWORD ───────────────────────────────────────────────────────
+    // POST /api/auth/reset-password
+    // Body: { "token": "uuid-token", "newPassword": "newPass123" }
+    // Return: { "message": "Password berhasil direset..." }
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> body) {
+        String token = body.get("token");
+        String newPassword = body.get("newPassword");
+
+        if (token == null || token.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Token tidak valid"));
+        }
+
+        if (newPassword == null || newPassword.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Password wajib diisi"));
+        }
+
+        PasswordResetResult result = passwordResetService.resetPassword(token, newPassword);
+
+        Map<String, Object> bodyResponse = Map.of(
+                "success", result.success(),
+                "code", result.code(),
+                "message", result.message()
+        );
+
+        if (result.success()) {
+            return ResponseEntity.ok(bodyResponse);
+        }
+        if ("TOKEN_EXPIRED".equals(result.code())) {
+            return ResponseEntity.status(HttpStatus.GONE).body(bodyResponse);
+        }
+        if ("TOKEN_INVALID".equals(result.code()) || "WEAK_PASSWORD".equals(result.code())) {
+            return ResponseEntity.badRequest().body(bodyResponse);
+        }
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(bodyResponse);
     }
 }

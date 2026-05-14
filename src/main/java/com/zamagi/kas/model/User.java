@@ -52,6 +52,21 @@ public class User {
     @Column(name = "terima_laporan_bulanan", columnDefinition = "BOOLEAN DEFAULT FALSE")
     private Boolean terimaLaporanBulanan = false;
 
+    @Column(name = "password_reset_token")
+    private String passwordResetToken;
+
+    @Column(name = "password_reset_expires_at")
+    private LocalDateTime passwordResetExpiresAt;
+
+    @Column(name = "last_forgot_password_request")
+    private LocalDateTime lastForgotPasswordRequest;
+
+    @Column(name = "forgot_password_request_count", columnDefinition = "integer default 0")
+    private Integer forgotPasswordRequestCount = 0;
+
+    @Column(name = "token_version", columnDefinition = "integer default 0")
+    private Integer tokenVersion = 0;
+
     // --- Constructor Kosong ---
     public User() {
     }
@@ -151,5 +166,49 @@ public class User {
 
     public void setTerimaLaporanBulanan(Boolean terimaLaporanBulanan) {
         this.terimaLaporanBulanan = terimaLaporanBulanan;
+    }
+
+    public String getPasswordResetToken() {
+        return passwordResetToken;
+    }
+
+    public void setPasswordResetToken(String passwordResetToken) {
+        this.passwordResetToken = passwordResetToken;
+    }
+
+    public LocalDateTime getPasswordResetExpiresAt() {
+        return passwordResetExpiresAt;
+    }
+
+    public void setPasswordResetExpiresAt(LocalDateTime passwordResetExpiresAt) {
+        this.passwordResetExpiresAt = passwordResetExpiresAt;
+    }
+
+    public LocalDateTime getLastForgotPasswordRequest() {
+        return lastForgotPasswordRequest;
+    }
+
+    public void setLastForgotPasswordRequest(LocalDateTime lastForgotPasswordRequest) {
+        this.lastForgotPasswordRequest = lastForgotPasswordRequest;
+    }
+
+    public Integer getForgotPasswordRequestCount() {
+        return forgotPasswordRequestCount != null ? forgotPasswordRequestCount : 0;
+    }
+
+    public void setForgotPasswordRequestCount(Integer forgotPasswordRequestCount) {
+        this.forgotPasswordRequestCount = forgotPasswordRequestCount;
+    }
+
+    public Integer getTokenVersion() {
+        return tokenVersion != null ? tokenVersion : 0;
+    }
+
+    public void setTokenVersion(Integer tokenVersion) {
+        this.tokenVersion = tokenVersion;
+    }
+
+    public void incrementTokenVersion() {
+        this.tokenVersion = getTokenVersion() + 1;
     }
 }

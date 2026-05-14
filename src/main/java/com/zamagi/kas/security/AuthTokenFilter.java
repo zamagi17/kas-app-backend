@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import com.zamagi.kas.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -18,6 +19,9 @@ public class AuthTokenFilter extends OncePerRequestFilter {
     @Autowired
     private JwtUtils jwtUtils;
 
+    @Autowired
+    private UserRepository userRepository;
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
@@ -29,6 +33,12 @@ public class AuthTokenFilter extends OncePerRequestFilter {
                 // validateAccessToken memastikan ini bukan refresh token
                 // yang disalahgunakan untuk akses endpoint biasa
                 String username = jwtUtils.getUserNameFromJwtToken(jwt);
+                var userOptional = userRepository.findByUsername(username);
+                if (userOptional.isEmpty() ||
+                        jwtUtils.getTokenVersionFromToken(jwt) != userOptional.get().getTokenVersion()) {
+                    filterChain.doFilter(request, response);
+                    return;
+                }
                 UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(username, null, null);
                 authentication.setDetails(

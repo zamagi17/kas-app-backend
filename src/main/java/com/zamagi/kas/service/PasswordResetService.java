@@ -235,7 +235,7 @@ public class PasswordResetService {
             String plainTextContent = buildResetPasswordEmailText(namaLengkap, resetLink);
 
             helper.setTo(email.trim());
-            helper.setFrom("noreply@zonakas.com");
+            helper.setFrom("Zonakas <no-reply@kas-apps.rotibuayajkt.web.id>");
             helper.setSubject("Reset Password - ZonaKas");
             helper.setText(plainTextContent, htmlContent); // Plain text + HTML
 

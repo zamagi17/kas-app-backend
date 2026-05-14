@@ -301,13 +301,13 @@ public class PasswordResetService {
     }
 
     private String buildResetPasswordEmailText(String namaLengkap, String resetLink) {
-        return String.format("""
-            Halo %s,
+        String template = """
+            Halo {{NAMA}},
 
             Anda meminta untuk reset password akun ZonaKas Anda.
 
             Klik link di bawah untuk reset password (link valid 15 menit):
-            %s
+            {{LINK}}
 
             PENTING:
             - Link ini akan kadaluarsa dalam 15 menit
@@ -321,11 +321,14 @@ public class PasswordResetService {
             ---
             Email ini dikirim secara otomatis. Mohon tidak membalas email ini.
             Butuh bantuan? Hubungi support@zonakas.com
-            """, namaLengkap, resetLink);
+            """;
+
+        return template.replace("{{NAMA}}", namaLengkap)
+                .replace("{{LINK}}", resetLink);
     }
 
     private String buildResetPasswordEmailHtml(String namaLengkap, String resetLink) {
-        return String.format("""
+        String template = """
             <!DOCTYPE html>
             <html lang="id">
             <head>
@@ -335,14 +338,12 @@ public class PasswordResetService {
                 <style>
                     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; }
                     .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
-                    /* PERHATIKAN: 0% dan 100% diubah menjadi 0%% dan 100%% agar tidak bentrok dengan String.format */
-                    .header { background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); color: white; padding: 40px 30px; text-align: center; }
+                    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px 30px; text-align: center; }
                     .header h1 { margin: 0; font-size: 28px; font-weight: 700; }
                     .header p { margin: 10px 0 0 0; opacity: 0.9; font-size: 16px; }
                     .content { padding: 40px 30px; color: #374151; line-height: 1.6; }
                     .content h2 { color: #1f2937; margin-top: 0; font-size: 24px; }
-                    /* PERHATIKAN: 0%% dan 100%% di sini juga */
-                    .reset-button { display: inline-block; background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 20px 0; box-shadow: 0 4px 14px rgba(102, 126, 234, 0.4); }
+                    .reset-button { display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 20px 0; box-shadow: 0 4px 14px rgba(102, 126, 234, 0.4); }
                     .reset-button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6); }
                     .warning { background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; margin: 20px 0; border-radius: 6px; }
                     .warning h3 { margin: 0 0 8px 0; color: #92400e; font-size: 16px; }
@@ -369,16 +370,16 @@ public class PasswordResetService {
                     </div>
                     
                     <div class="content">
-                        <h2>Halo %s!</h2>
+                        <h2>Halo {{NAMA}}!</h2>
                         
                         <p>Kami menerima permintaan untuk mereset password akun ZonaKas Anda. Jika ini memang Anda yang meminta, klik tombol di bawah untuk membuat password baru:</p>
                         
                         <div style="text-align: center;">
-                            <a href="%s" class="reset-button">Reset Password Sekarang</a>
+                            <a href="{{LINK}}" class="reset-button">Reset Password Sekarang</a>
                         </div>
                         
                         <p style="margin-top: 30px;">Atau salin dan tempel link berikut ke browser Anda:</p>
-                        <p style="word-break: break-all; background-color: #f3f4f6; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 14px; color: #374151;">%s</p>
+                        <p style="word-break: break-all; background-color: #f3f4f6; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 14px; color: #374151;">{{LINK}}</p>
                         
                         <div class="warning">
                             <h3>⚠️ Link ini akan kadaluarsa</h3>
@@ -402,7 +403,10 @@ public class PasswordResetService {
                 </div>
             </body>
             </html>
-            """, namaLengkap, resetLink, resetLink);
+            """;
+
+        return template.replace("{{NAMA}}", namaLengkap)
+                .replace("{{LINK}}", resetLink);
     }
 
     /**
